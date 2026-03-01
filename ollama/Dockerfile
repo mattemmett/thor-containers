@@ -12,7 +12,7 @@ RUN git clone --depth 1 --branch v0.17.4 https://github.com/ollama/ollama /build
 
 WORKDIR /build/ollama
 
-# Build CUDA 13 backend via CMake (produces shared libs in dist/)
+# Build CUDA 13 backend via CMake
 RUN cmake --preset 'CUDA 13' && \
     cmake --build --parallel $(nproc) --preset 'CUDA 13'
 
@@ -23,9 +23,6 @@ RUN go build \
 
 FROM ghcr.io/nvidia-ai-iot/ollama:r38.2.arm64-sbsa-cu130-24.04
 
-# Copy the new binary
 COPY --from=builder /build/ollama/dist/bin/ollama /usr/local/bin/ollama
-
-# Copy the CUDA 13 backend libraries
-COPY --from=builder /build/ollama/dist/lib /usr/local/lib/ollama
+COPY --from=builder /build/ollama/build/lib/ollama/ /usr/local/lib/ollama/
 
