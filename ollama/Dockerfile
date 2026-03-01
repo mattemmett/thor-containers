@@ -17,6 +17,10 @@ RUN go build \
 
 FROM ghcr.io/nvidia-ai-iot/ollama:r38.2.arm64-sbsa-cu130-24.04
 
-COPY --from=builder /build/ollama/dist/bin/ollama /usr/local/bin/ollama
-COPY --from=builder /build/ollama/build/lib/ollama/ /usr/local/lib/ollama/cuda_v13/
+# Remove symlink and install new binary directly at /opt/ollama/ollama
+RUN rm /opt/ollama/ollama
+COPY --from=builder /build/ollama/dist/bin/ollama /opt/ollama/ollama
+
+# Install CUDA 13 libs where the binary expects them: ../lib/ollama/cuda_v13
+COPY --from=builder /build/ollama/build/lib/ollama/ /opt/lib/ollama/cuda_v13/
 
