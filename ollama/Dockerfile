@@ -1,25 +1,31 @@
 FROM ghcr.io/nvidia-ai-iot/ollama:r38.2.arm64-sbsa-cu130-24.04 AS builder
 
-# Install Go and build dependencies
 RUN apt-get update && apt-get install -y \
     golang-go \
     git \
     cmake \
     build-essential \
+    zstd \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone Ollama v0.17.4
 RUN git clone --depth 1 --branch v0.17.4 https://github.com/ollama/ollama /build/ollama
 
-# Build with CUDA support
 WORKDIR /build/ollama
-RUN go generate ./... && \
-    go build \
-    -ldflags "-X=github.com/ollama/ollama/version.Version=0.17.4" \
-    -o /usr/local/bin/ollama .
 
-# Final image - same base, just replace the binary
+# Build CUDA 13 backend via CMake (produces shared libs in dist/)
+RUN cmake --preset 'CUDA 13' && \
+    cmake --build --parallel $(nproc) --preset 'CUDA 13'
+
+# Build the Go binary
+RUN go build \
+    -ldflags "-X=github.com/ollama/ollama/version.Version=0.17.4" \
+    -o /build/ollama/dist/bin/ollama .
+
 FROM ghcr.io/nvidia-ai-iot/ollama:r38.2.arm64-sbsa-cu130-24.04
 
-COPY --from=builder /usr/local/bin/ollama /usr/local/bin/ollama
+# Copy the new binary
+COPY --from=builder /build/ollama/dist/bin/ollama /usr/local/bin/ollama
+
+# Copy the CUDA 13 backend libraries
+COPY --from=builder /build/ollama/dist/lib /usr/local/lib/ollama
 
