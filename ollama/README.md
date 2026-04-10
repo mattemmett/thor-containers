@@ -116,3 +116,13 @@ docker run -d \
   for `LibOllamaPath` calculation, pointing to the wrong lib directory.
 - **Cross-compiling on x86**: The CUDA backend must be compiled natively on aarch64 with the
   L4T CUDA toolkit. The Thor is the build machine.
+
+## Pre-built image
+
+A pre-built image is available on GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/mattemmett/ollama:v0.20.3-r38-sbsa
+```
+
+Note: this image is built for aarch64 (SBSA) only. It will not run on x86.
