@@ -1,0 +1,64 @@
+[Unit]
+Description=vLLM (Qwen3.8-27B-NVFP4) on Jetson Thor
+Documentation=https://github.com/mattemmett/thor-containers
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=30s
+
+# Cold start is ~6.5 min (weights + torch.compile + FlashInfer autotune +
+# CUDA graph capture). Warm start with a populated compile cache is ~2-3 min.
+TimeoutStartSec=900
+TimeoutStopSec=120
+
+Environment=IMAGE=nvcr.io/nvidia/vllm:26.07-py3
+Environment=MODEL=unsloth/Qwen3.8-27B-NVFP4
+Environment=SERVED_NAME=qwen3.8-27b
+Environment=HF_CACHE=/home/matt/data/models/huggingface
+Environment=VLLM_CACHE=/home/matt/data/vllm_cache
+
+# Thor has unified memory: Linux page cache counts against what vLLM sees as
+# free GPU memory. Without this, vLLM refuses to start after a large read.
+ExecStartPre=/sbin/sysctl -w vm.drop_caches=3
+
+# Clear any container left behind by an unclean shutdown
+ExecStartPre=-/usr/bin/docker rm -f vllm
+
+ExecStart=/usr/bin/docker run --rm \
+    --runtime nvidia \
+    --network host \
+    --ipc host \
+    --shm-size=16g \
+    --ulimit memlock=-1 \
+    --ulimit stack=67108864 \
+    -v ${HF_CACHE}:/root/.cache/huggingface \
+    -v ${VLLM_CACHE}:/root/.cache/vllm \
+    --name vllm \
+    ${IMAGE} \
+    vllm serve ${MODEL} \
+        --host 0.0.0.0 \
+        --port 8000 \
+        --served-model-name ${SERVED_NAME} \
+        --max-model-len 131072 \
+        --kv-cache-dtype fp8 \
+        --gpu-memory-utilization 0.7 \
+        --reasoning-parser qwen3 \
+        --max-num-batched-tokens 8192 \
+        --enable-prefix-caching \
+        --enable-auto-tool-choice \
+        --tool-call-parser qwen3_coder \
+        --speculative-config {"method":"mtp","num_speculative_tokens":3}
+
+# Hold the unit in "activating" until the server actually answers. This is what
+# makes ollama.service's After= dependency meaningful - vLLM must finish its
+# memory allocation before anything else competes for unified memory.
+ExecStartPost=/bin/bash -c 'until curl -sf http://localhost:8000/health >/dev/null; do sleep 5; done'
+
+ExecStop=/usr/bin/docker stop --time=60 vllm
+
+[Install]
+WantedBy=multi-user.target
