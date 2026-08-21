@@ -217,3 +217,22 @@ Flag-level tuning is exhausted. What remains is structural.
 - vLLM recipe for this model: https://recipes.vllm.ai/Qwen/Qwen3.8-27B
 - NGC vLLM release notes: https://docs.nvidia.com/deeplearning/frameworks/vllm-release-notes/
 - Jetson AI Lab: https://www.jetson-ai-lab.com/
+
+## systemd quoting
+
+systemd does not use a shell, so nested quotes in `ExecStart`/`ExecStartPost` get
+mangled. This bit us twice:
+
+- `--speculative-config {"method":"mtp",...}` lost its double quotes and arrived as
+  `{method:mtp,...}` - invalid JSON, `status=2/INVALIDARGUMENT`. Fixed by wrapping
+  the whole value in single quotes.
+- A `curl -d "{\"model\":...}"` warmup call arrived malformed and returned 400,
+  silently swallowed by `|| true`. Fixed by moving it to a script
+  (`/usr/local/bin/ollama-warmup.sh`).
+
+Rule of thumb: if a systemd command line needs escaped quotes, put it in a script
+instead. Scripts are testable standalone; `ExecStart=` lines are not.
+
+Also: any `ExecStartPost` health poll must be **bounded**. An unbounded
+`until curl ...; do sleep 5; done` will keep the unit in `activating` forever if
+`ExecStart` dies, and `systemctl start` will hang rather than report the failure.
